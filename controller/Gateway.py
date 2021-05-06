@@ -161,7 +161,6 @@ class Gateway(app_manager.RyuApp):
                        %(etherFrame.src, etherFrame.dst, inPort))
             self.reply_arp(datapath, etherFrame, arpPacket, arp_dstIp, inPort)
         elif arpPacket.opcode == 2:
-            self.logger.info("Ho ricevuto una ")
             Constants.arp_association[arpPacket.src_ip]=arpPacket.src_mac
             if datapath.id==3:
                 if '10.0.1' in arpPacket.src_ip:
@@ -169,7 +168,6 @@ class Gateway(app_manager.RyuApp):
                 elif '10.0.3' in arpPacket.src_ip:
                     self.install_gw_rule(datapath,arpPacket.src_ip,'00:00:00:00:00:12',3)
                 elif '10.0.2' in arpPacket.src_ip:
-                    self.logger.info("Ora dovrei installarla...")
                     self.install_gw_rule(datapath,arpPacket.src_ip,'00:00:00:00:00:11',2)
                 elif '192.168.0' in arpPacket.src_ip:
                     self.install_gw_rule(datapath, arpPacket.src_ip, '00:00:00:00:00:13', 5,mask=16,true_dest='10.1.0.0')
@@ -189,32 +187,6 @@ class Gateway(app_manager.RyuApp):
 
         outPort = self.gw_association[datapath.id,arp_dstIp][0]
         srcMac=self.gw_association[datapath.id,arp_dstIp][1]
-
-        '''if arp_dstIp == Constants.GW_1_IP:
-            srcMac = Constants.GW_1_MAC
-            outPort = 1
-        elif arp_dstIp == Constants.GW_2_IP:
-            srcMac = Constants.GW_2_MAC
-            outPort = 2
-        elif arp_dstIp == Constants.GW_3_IP:
-            srcMac = Constants.GW_3_MAC
-            outPort = 3
-        elif arp_dstIp == Constants.GW_4_IP:
-            srcMac = Constants.GW_4_MAC
-            outPort = 2
-        elif arp_dstIp == Constants.R2_ROUTING_IP:
-            srcMac = Constants.R2_ROUTING_MAC
-            outPort = 1
-        elif arp_dstIp == Constants.R1_ROUTING_IP:
-            srcMac = Constants.R1_ROUTING_MAC
-            outPort = 5
-        elif arp_dstIp==Constants.GATEWAY_FOR_INTERNET_IP:
-            srcMac = Constants.GATEWAY_FOR_INTERNET_MAC
-            outPort = 1'''
-
-        self.logger.info("Preparing arp reply:"
-                         " >srcMac: "+srcMac+
-                           ">outPort: "+str(outPort))
 
         self.send_arp(datapath, 2, srcMac, srcIp, dstMac, dstIp, outPort)
         self.logger.info("send ARP reply %s => %s (port%d)" %(srcMac, dstMac, outPort))
@@ -269,4 +241,3 @@ class Gateway(app_manager.RyuApp):
             priority=ofproto.OFP_DEFAULT_PRIORITY,
             flags=ofproto.OFPFF_SEND_FLOW_REM, actions=actions)
         datapath.send_msg(mod)
-

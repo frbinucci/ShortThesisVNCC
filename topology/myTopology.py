@@ -32,7 +32,8 @@ class BusinessNetwork(Topo):
 
         for i in range(0,len(switches)):
             for j in irange(1,numHostPerSwitch):
-                host = self.addHost('h'+str(j)+'s'+str(i+1),ip=self.network_prefixes[i]+'.'+str(j)+'/24',defaultRoute='via '+ self.network_prefixes[i]+".254")
+                host = self.addHost('h' + str(j) + 's' + str(i + 1),ip='no ip defined')
+                #host = self.addHost('h'+str(j)+'s'+str(i+1),ip=self.network_prefixes[i]+'.'+str(j)+'/24',defaultRoute='via '+ self.network_prefixes[i]+".254")
                 self.addLink(switches[i],host)
 
 

@@ -13,6 +13,7 @@ from ryu.lib.packet import tcp
 from ryu.lib.packet import udp
 from ryu.lib.packet import dhcp
 from ryu import cfg
+import ipaddress
 import Constants
 
 
@@ -45,8 +46,11 @@ class NAT(app_manager.RyuApp):
         for nat in self.nat_list:
             nat_index = int(nat)
             self.logger.info(nat_index)
-            self.external_port_counter[nat_index] = 2000
-            self.external_port_counter[nat_index] = 2000
+            #self.external_port_counter[nat_index] = {}
+            self.port_number_start = 2000
+            self.port_number_stop = 65535
+            for current_port in range(self.port_number_start,self.port_number_stop):
+                self.external_port_counter[nat_index,current_port]=True
             self.nat_routing_parameters[nat_index]=(self.external_ip_list[i],
                                                     self.external_gateway_list[i],
                                                     self.external_mac_list[i],
@@ -67,13 +71,13 @@ class NAT(app_manager.RyuApp):
 
         if str(dpid) in self.nat_list:
             ip4_pkt=pkt.get_protocol(ipv4.ipv4)
-            if ip4_pkt:
-                if Constants.R2_EXTERNAL_IP in ip4_pkt.dst:
+            if ip4_pkt!=None:
+                if not ipaddress.ip_address(ip4_pkt.src.decode('utf-8')).is_private:
                     self.manage_nat(datapath, pkt, 'inbound')
-                else:
+                elif not ipaddress.ip_address(ip4_pkt.dst.decode('utf-8')).is_private and ip4_pkt.dst!='255.255.255.255':
                     self.manage_nat(datapath, pkt, 'outbound')
-            else:
-                return
+                else:
+                    return
 
     def manage_nat(self,datapath,pkt,direction):
 
@@ -87,6 +91,9 @@ class NAT(app_manager.RyuApp):
         elif udp4:
             src_port = udp4.src_port
             dst_port = udp4.dst_port
+        else:
+            self.logger.info("Protocol not supported yet!")
+            return
 
         id = datapath.id
         src = ip4.src
@@ -112,7 +119,7 @@ class NAT(app_manager.RyuApp):
 
             mod = datapath.ofproto_parser.OFPFlowMod(
                 datapath=datapath, match=match, cookie=0,
-                command=ofproto.OFPFC_ADD, idle_timeout=1000, hard_timeout=0,
+                command=ofproto.OFPFC_ADD, idle_timeout=10, hard_timeout=0,
                 priority=ofproto.OFP_DEFAULT_PRIORITY,
                 flags=ofproto.OFPFF_SEND_FLOW_REM, actions=actions)
             datapath.send_msg(mod)
@@ -131,16 +138,30 @@ class NAT(app_manager.RyuApp):
 
             mod = datapath.ofproto_parser.OFPFlowMod(
                 datapath=datapath, match=match, cookie=0,
-                command=ofproto.OFPFC_ADD, idle_timeout=1000, hard_timeout=0,
+                command=ofproto.OFPFC_ADD, idle_timeout=10, hard_timeout=0,
                 priority=ofproto.OFP_DEFAULT_PRIORITY,
                 flags=ofproto.OFPFF_SEND_FLOW_REM, actions=actions)
             datapath.send_msg(mod)
 
+    @set_ev_cls(ofp_event.EventOFPFlowRemoved, MAIN_DISPATCHER)
+    def flow_removed_handler(self, ev):
+        msg = ev.msg
+        tp_dst = int(msg.match.tp_dst)
+        nw_dst = int(msg.match.nw_dst)
+        dpid = msg.datapath.id
+        if tp_dst>=self.port_number_start and tp_dst<=self.port_number_stop and ipaddress.ip_address(nw_dst)==ipaddress.ip_address(self.nat_routing_parameters[dpid][0].decode('utf-8')):
+            self.external_port_counter[dpid,tp_dst]=True
+            self.logger.info(">>Port "+str(tp_dst)+ " is now free")
+
 
     def getNewAvailablePort(self,router):
-        if self.external_port_counter[router]<65535:
-            self.external_port_counter[router]=self.external_port_counter[router]+1
-        else:
-            self.external_port_counter[router]=2000
-        self.logger.info(">>Next port: "+str(self.external_port_counter[router]))
-        return self.external_port_counter[router]
+        index_start = self.port_number_start
+        index_stop = self.port_number_stop
+        next_port=-1
+        for current_port in range(index_start,index_stop):
+            if self.external_port_counter[router,current_port]==True:
+                self.external_port_counter[router,current_port]=False
+                next_port = current_port
+                break
+        self.logger.info(">>Next port: "+str(next_port))
+        return next_port
