@@ -1,9 +1,9 @@
 # ShortThesisVNCC
 This repository contains the script used in order to implement a simple example of SDN network built using Mininet and Ryu
 
-##Instructions##
+## Instructions
 
-###Instruction for composing the configuration file###
+### Instruction for composing the configuration file
 Put the file parma.conf in ryu/app/param.conf. 
 This file defines:
 1)Information about NAT
@@ -43,7 +43,7 @@ Here's an example of param.conf file:
     dhcp_servers=3#2#00:00:00:00:00:11#10.0.2.254#10.0.2.0#255.255.255.0#10.0.2.50#25,3#1#00:00:00:00:00:10#10.0.1.254#10.0.1.0#255.255.255.0#10.0.1.10#10
 
 
-###Instruction to run the network####
+### Instruction to run the network
 
 Work in progres...
 
