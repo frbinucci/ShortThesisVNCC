@@ -10,6 +10,7 @@ from ryu.lib.packet import ether_types
 from ryu.lib.packet import arp
 from ryu import cfg
 from ryu.lib.packet import ipv4
+import ipaddress
 import Constants
 
 class Gateway(app_manager.RyuApp):
@@ -24,6 +25,14 @@ class Gateway(app_manager.RyuApp):
         gw_info_list = CONF.gateway_list.split(",")
         gw_dpid_list = CONF.gw_dpid_list.split(",")
         self.gw_dpid_list = gw_dpid_list
+
+        self.superNet =ipaddress.ip_network(str('10.0.0.0' + '/16').decode('utf-8'),strict=False)
+        self.superNetB =ipaddress.ip_network(str('10.1.0.0' + '/16').decode('utf-8'),strict=False)
+        self.netA = ipaddress.ip_network(str('10.0.1.0' + '/24').decode('utf-8'),strict=False)
+        self.netB = ipaddress.ip_network(str('10.0.2.0' + '/24').decode('utf-8'),strict=False)
+        self.netC = ipaddress.ip_network((str('10.0.3.0' + '/24')).decode('utf-8'),strict=False)
+        self.netD = ipaddress.ip_network((str('10.1.5.0'+'/24')).decode('utf-8'),strict=False)
+        self.router_network = ipaddress.ip_network((str('192.168.0.0'+'/24')).decode('utf-8'),strict=False)
 
         for piece in gw_info_list:
             key = piece.split("-")[0]
@@ -48,95 +57,74 @@ class Gateway(app_manager.RyuApp):
         pkt = packet.Packet(msg.data)
         ip4 = pkt.get_protocol(ipv4.ipv4)
         eth = pkt.get_protocol(ethernet.ethernet)
+
         if str(dpid) in self.gw_dpid_list:
             if eth.ethertype == ether_types.ETH_TYPE_ARP :
                 self.receive_arp(datapath, pkt, eth, msg.in_port)
                 return 0
             else:
+                source_net_address = ipaddress.ip_network(str(ip4.src + '/24').decode('utf-8'), strict=False)
+                dest_ip_address = ipaddress.ip_network(str(ip4.dst + "/24").decode('utf-8'), strict=False)
                 if dpid == 3:
-                    if '10.0.1' in ip4.src and ip4.dst != '10.0.3.1':
-                        match = datapath.ofproto_parser.OFPMatch(dl_type=0x0800, nw_src='10.0.1.0', nw_src_mask=24,
-                                                                     nw_dst=ip4.dst)
-                        mod = datapath.ofproto_parser.OFPFlowMod(
-                            datapath=datapath, match=match, cookie=0,
+                    if self.netA.network_address==source_net_address.network_address or self.netA.network_address==dest_ip_address.network_address:
+                        matchSource = datapath.ofproto_parser.OFPMatch(dl_type=0x0800, nw_src='10.0.1.0', nw_src_mask=24)
+                        matchDest = datapath.ofproto_parser.OFPMatch(dl_type=0x0800, nw_dst='10.0.1.0', nw_dst_mask=24)
+
+                        modSource = datapath.ofproto_parser.OFPFlowMod(
+                            datapath=datapath, match=matchSource, cookie=0,
                             command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
-                            priority=ofproto.OFP_DEFAULT_PRIORITY,
+                            priority=ofproto.OFP_DEFAULT_PRIORITY+100,
                             flags=ofproto.OFPFF_SEND_FLOW_REM)
-                        datapath.send_msg(mod)
+
+                        modDest = datapath.ofproto_parser.OFPFlowMod(
+                            datapath=datapath, match=matchDest, cookie=0,
+                            command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
+                            priority=ofproto.OFP_DEFAULT_PRIORITY+100,
+                            flags=ofproto.OFPFF_SEND_FLOW_REM)
+
+                        datapath.send_msg(modSource)
+                        datapath.send_msg(modDest)
                         return
                     else:
-                        if '10.0.3' in ip4.dst:
+                        if self.netC.network_address==dest_ip_address.network_address:
                             if ip4.dst not in Constants.arp_association.keys():
-                                self.send_arp(datapath, 1, Constants.GW_3_MAC, Constants.GW_3_IP,
-                                              Constants.BROADCAST_MAC, ip4.dst, 3)
-                                if '10.0.1' not in ip4.src:
-                                    prefix = ip4.src.split(".")
-                                    for i in range(0, len(prefix) - 1):
-                                        prefix[i] = prefix[i] + "."
-                                    prefix[3] = '0'
-                                    net_address = "".join(prefix)
-                                    match = datapath.ofproto_parser.OFPMatch(dl_type=0x0800, nw_src=net_address,
-                                                                             nw_src_mask=24, nw_dst='10.0.3.0',
-                                                                             nw_dst_mask=24)
-                                    mod = datapath.ofproto_parser.OFPFlowMod(
-                                        datapath=datapath, match=match, cookie=0,
-                                        command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
-                                        priority=ofproto.OFP_DEFAULT_PRIORITY,
-                                        flags=ofproto.OFPFF_SEND_FLOW_REM)
-                                    datapath.send_msg(mod)
-                        elif '10.0.1' in ip4.dst:
-                            if '10.0.3' not in ip4.src:
-                                prefix = ip4.src.split(".")
-                                for i in range(0, len(prefix) - 1):
-                                    prefix[i] = prefix[i] + "."
-                                prefix[3] = '0'
-                                net_address = "".join(prefix)
-                                match = datapath.ofproto_parser.OFPMatch(dl_type=0x0800, nw_src=net_address,
-                                                                         nw_src_mask=24, nw_dst='10.0.1.0',
-                                                                         nw_dst_mask=24)
-                                mod = datapath.ofproto_parser.OFPFlowMod(
-                                    datapath=datapath, match=match, cookie=0,
-                                    command=ofproto.OFPFC_ADD, idle_timeout=0, hard_timeout=0,
-                                    priority=ofproto.OFP_DEFAULT_PRIORITY,
-                                    flags=ofproto.OFPFF_SEND_FLOW_REM)
-                                datapath.send_msg(mod)
-                            if ip4.dst not in Constants.arp_association.keys():
-                                self.send_arp(datapath, 1, Constants.GW_1_MAC, Constants.GW_1_IP,
-                                              Constants.BROADCAST_MAC, ip4.dst, 1)
-                        elif '10.0.2' in ip4.dst:
+                                superNetSource = ipaddress.ip_network((ip4.src+"/8").decode('utf-8'),strict=False)
+                                if superNetSource.network_address== self.superNet.network_address:
+                                    self.send_arp(datapath, 1, Constants.GW_3_MAC, Constants.GW_3_IP,
+                                                      Constants.BROADCAST_MAC, ip4.dst, 3)
+                        elif dest_ip_address.network_address==self.netB.network_address:
                             if ip4.dst not in Constants.arp_association.keys():
                                 self.send_arp(datapath, 1, Constants.GW_2_MAC, Constants.GW_2_IP,
                                               Constants.BROADCAST_MAC, ip4.dst, 2)
-                        elif '10.1' in ip4.dst:
-                            self.logger.info("Lo posso instradare?")
+                        elif dest_ip_address.network_address == self.netD.network_address:
                             if Constants.arp_association.get(Constants.R2_ROUTING_IP) == None:
                                 self.send_arp(datapath, 1, Constants.R1_ROUTING_MAC, Constants.R1_ROUTING_IP,
                                               Constants.BROADCAST_MAC, Constants.R2_ROUTING_IP, 5)
 
                         # Checking packet source for arp resolution
-                        if '10.0.2' in ip4.src:
+                        if self.netB.network_address == source_net_address.network_address:
                             self.send_arp(datapath, 1, Constants.GW_2_MAC, Constants.GW_2_IP,
                                           Constants.BROADCAST_MAC, ip4.src, 2)
-                        if '10.0.1' in ip4.src:
+                        if self.netA.network_address == source_net_address.network_address :
                             self.send_arp(datapath, 1, Constants.GW_1_MAC, Constants.GW_1_IP,
                                           Constants.BROADCAST_MAC, ip4.src, 1)
-                        if '10.0.3' in ip4.src:
-                            self.send_arp(datapath, 1, Constants.GW_3_MAC, Constants.GW_3_IP,
-                                          Constants.BROADCAST_MAC, ip4.src, 3)
                 elif dpid == 4:
-                    if '10.0' in ip4.dst:
+                    supernet_dest = ipaddress.ip_network(str(ip4.dst + "/16").decode('utf-8'), strict=False)
+                    supernet_source = ipaddress.ip_network(str(ip4.src + "/16").decode('utf-8'), strict=False)
+                    if self.superNet.network_address == supernet_dest.network_address:
                         if Constants.arp_association.get(Constants.R1_ROUTING_IP) == None:
                             self.send_arp(datapath, 1, Constants.R2_ROUTING_MAC, Constants.R2_ROUTING_IP,
                                           Constants.BROADCAST_MAC, Constants.R1_ROUTING_IP, 1)
-                    elif '10.1' in ip4.dst:
+                    elif self.superNetB.network_address == supernet_dest.network_address:
                         if ip4.dst not in Constants.arp_association.keys():
                             self.send_arp(datapath, 1, Constants.GW_4_MAC, Constants.GW_4_IP,
                                           Constants.BROADCAST_MAC, ip4.dst, 2)
-                    if '10.1' in ip4.src:
+
+                    if self.superNetB.network_address == supernet_source.network_address:
                         self.send_arp(datapath, 1, Constants.GW_4_MAC, Constants.GW_4_IP, Constants.BROADCAST_MAC,
                                       ip4.src, 2)
                 elif dpid == 8:
-                    if '8.8.8' in ip4.dst:
+                    if '8.8.8.8' in ip4.dst:
                         if Constants.arp_association.get(ip4.dst) == None:
                             self.send_arp(datapath, 1, Constants.GATEWAY_FOR_INTERNET_MAC,
                                           Constants.GATEWAY_FOR_INTERNET_IP, Constants.BROADCAST_MAC, ip4.dst, 1)
@@ -162,22 +150,26 @@ class Gateway(app_manager.RyuApp):
             self.reply_arp(datapath, etherFrame, arpPacket, arp_dstIp, inPort)
         elif arpPacket.opcode == 2:
             Constants.arp_association[arpPacket.src_ip]=arpPacket.src_mac
+            src_ip_net = ipaddress.ip_network(str(arpPacket.src_ip+"/24").decode('utf-8'),strict=False).network_address
             if datapath.id==3:
-                if '10.0.1' in arpPacket.src_ip:
-                    self.install_gw_rule(datapath,arpPacket.src_ip,'00:00:00:00:00:10',1)
-                elif '10.0.3' in arpPacket.src_ip:
-                    self.install_gw_rule(datapath,arpPacket.src_ip,'00:00:00:00:00:12',3)
-                elif '10.0.2' in arpPacket.src_ip:
-                    self.install_gw_rule(datapath,arpPacket.src_ip,'00:00:00:00:00:11',2)
-                elif '192.168.0' in arpPacket.src_ip:
-                    self.install_gw_rule(datapath, arpPacket.src_ip, '00:00:00:00:00:13', 5,mask=16,true_dest='10.1.0.0')
+                if self.netA.network_address == src_ip_net:
+                    self.install_gw_rule(datapath,arpPacket.src_ip,Constants.GW_1_MAC,1)
+                elif src_ip_net == self.netC.network_address:
+                    superNet = ipaddress.ip_network(str('10.0.0.0' + '/16').decode('utf-8'), strict=False)
+                    match = datapath.ofproto_parser.OFPMatch(dl_type=0x0800, nw_src=str(superNet.network_address),
+                                                             nw_src_mask=16, nw_dst='10.0.3.1')
+                    self.install_gw_rule(datapath,arpPacket.src_ip,Constants.GW_3_MAC,3,match=match)
+                elif src_ip_net == self.netB.network_address:
+                    self.install_gw_rule(datapath,arpPacket.src_ip,Constants.GW_2_MAC,2)
+                elif src_ip_net == self.router_network.network_address:
+                    self.install_gw_rule(datapath, arpPacket.src_ip, Constants.R1_ROUTING_MAC, 5,mask=16,true_dest='10.1.0.0')
             elif datapath.id==4:
-                if '10.1.5' in arpPacket.src_ip:
-                    self.install_gw_rule(datapath,arpPacket.src_ip,'00:00:00:00:00:15',2)
-                elif '192.168.0' in arpPacket.src_ip:
-                    self.install_gw_rule(datapath,arpPacket.src_ip,'00:00:00:00:00:14',1,mask=16,true_dest='10.0.0.0')
+                if src_ip_net == self.netD.network_address:
+                    self.install_gw_rule(datapath,arpPacket.src_ip,Constants.GW_4_MAC,2)
+                elif src_ip_net == self.router_network.network_address:
+                    self.install_gw_rule(datapath,arpPacket.src_ip,Constants.R2_ROUTING_MAC,1,mask=16,true_dest='10.0.0.0')
             elif datapath.id==8:
-                if '8.8.8' in arpPacket.src_ip:
+                if '8.8.8.8' in arpPacket.src_ip:
                     self.install_gw_rule(datapath,arpPacket.src_ip,Constants.GATEWAY_FOR_INTERNET_MAC,1)
 
     def reply_arp(self, datapath, etherFrame, arpPacket, arp_dstIp, inPort):
@@ -224,13 +216,15 @@ class Gateway(app_manager.RyuApp):
         true_dest = kwargs.get('true_dest',None)
         if true_dest == None:
             true_dest = nw_dst
-        match = None
-        if mask==None:
-            match = datapath.ofproto_parser.OFPMatch(dl_type=0x0800, nw_dst=true_dest)
-        else:
-            match = datapath.ofproto_parser.OFPMatch(dl_type=0x0800, nw_dst=true_dest,nw_dst_mask=mask)
+        match = kwargs.get('match',None)
+        if match==None:
+            if mask==None:
+                match = datapath.ofproto_parser.OFPMatch(dl_type=0x0800, nw_dst=true_dest)
+            else:
+                match = datapath.ofproto_parser.OFPMatch(dl_type=0x0800, nw_dst=true_dest,nw_dst_mask=mask)
 
         actions = [
+            datapath.ofproto_parser.NXActionDecTtl(),
             datapath.ofproto_parser.OFPActionSetDlDst(haddr_to_bin(Constants.arp_association[nw_dst])),
             datapath.ofproto_parser.OFPActionSetDlSrc(haddr_to_bin(hw_addr)),
             datapath.ofproto_parser.OFPActionOutput(out_port)]

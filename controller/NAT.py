@@ -38,14 +38,12 @@ class NAT(app_manager.RyuApp):
         self.nat_external_port_list = CONF.nat_external_port_list.split(",")
         self.nat_internal_port_list = CONF.nat_internal_port_list.split(",")
 
-        self.logger.info(str(self.nat_list))
         self.external_port_counter={}
         self.nat_routing_parameters={}
         self.port_mapper = {}
         i=0
         for nat in self.nat_list:
             nat_index = int(nat)
-            self.logger.info(nat_index)
             #self.external_port_counter[nat_index] = {}
             self.port_number_start = 2000
             self.port_number_stop = 65535
@@ -111,6 +109,7 @@ class NAT(app_manager.RyuApp):
             external_ip = self.nat_routing_parameters[id][0]
             out_port = self.nat_routing_parameters[id][4]
             actions = [
+                datapath.ofproto_parser.NXActionDecTtl(),
                 datapath.ofproto_parser.OFPActionSetNwSrc(external_ip),
                 datapath.ofproto_parser.OFPActionSetTpSrc(next_port),
                 datapath.ofproto_parser.OFPActionSetDlDst(haddr_to_bin(next_hop_mac)),
@@ -130,6 +129,7 @@ class NAT(app_manager.RyuApp):
             out_port = self.nat_routing_parameters[id][5]
 
             actions = [
+                datapath.ofproto_parser.NXActionDecTtl(),
                 datapath.ofproto_parser.OFPActionSetNwDst(internal_address),
                 datapath.ofproto_parser.OFPActionSetTpDst(internal_port),
                 datapath.ofproto_parser.OFPActionSetDlDst(haddr_to_bin(hw_address)),

@@ -50,7 +50,7 @@ class DHCP(app_manager.RyuApp):
                 ip4_address+=1
                 i+=1
 
-            print(self.dhcp_table)
+
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
@@ -62,16 +62,28 @@ class DHCP(app_manager.RyuApp):
         dhcp_data = pkt.get_protocol(dhcp.dhcp)
 
         if dhcp_data!=None:
-
-            print(self.dhcp_association.keys())
             if  (str(dpid),str(msg.in_port)) in self.dhcp_association.keys():
                 for opt in (dhcp_data.options.option_list):
-                    print(opt)
                     if opt.tag==53:
                         if ord(opt.value)==Constants.DHCP_DISCOVER:
                             self.handle_dhcp_discover(pkt,datapath,msg.in_port)
                         elif ord(opt.value)==Constants.DHCP_REQUEST:
                             self.handle_dhcp_request(pkt,datapath,msg.in_port)
+                        elif ord(opt.value)==Constants.DHCP_RELEASE:
+                            self.handle_dhcp_release(pkt,datapath,msg.in_port)
+
+    def handle_dhcp_release(self,pkt,datapath,port):
+        dpid = datapath.id
+        rel_ipv4 = pkt.get_protocol(ipv4.ipv4)
+
+        i=0
+        for association in self.dhcp_table[str(dpid),str(port)]:
+                if association.getIp_address()==ipaddress.ip_address(str(rel_ipv4.src).decode('utf-8')):
+                    self.dhcp_table[str(dpid),str(port)][i].setMac_address(None)
+                    print("Address released: "+rel_ipv4.src)
+                    break
+                i+=1
+
 
 
 
@@ -114,44 +126,44 @@ class DHCP(app_manager.RyuApp):
         ipv4discovery = pkt.get_protocol(ipv4.ipv4)
         dpid = datapath.id
         dhcp_packet = pkt.get_protocol(dhcp.dhcp)
-        print(dhcp_packet)
+
         hw_addr = dhcp_packet.chaddr
         ass_list = self.dhcp_table[str(dpid),str(port)]
         client_ip_address=None
+        found_address=False
         for association in self.dhcp_table[str(dpid),str(port)]:
-            print(str(association))
+            print(str(association.getIp_address())+","+str(association.getMac_address()))
             if association.getMac_address() == None:
-                print("Trovato: "+str(association.getIp_address()))
+                found_address=True
                 association.setMac_address(hw_addr)
                 client_ip_address = association.getIp_address()
                 break
 
-
-        dhcp_packet.options.option_list.remove(
-            next(opt for opt in dhcp_packet.options.option_list if opt.tag == 55))
-        #dhcp_packet.options.option_list.remove(
-        #    next(opt for opt in dhcp_packet.options.option_list if opt.tag == 50))
-        dhcp_packet.options.option_list.remove(
-            next(opt for opt in dhcp_packet.options.option_list if opt.tag == 53))
-        dhcp_packet.options.option_list.remove(
-            next(opt for opt in dhcp_packet.options.option_list if opt.tag == 12))
-        dhcp_packet.options.option_list.insert(
-            0, dhcp.option(tag=1, value=addrconv.ipv4.text_to_bin(self.dhcp_association[str(dpid),str(port)][3])))
-        dhcp_packet.options.option_list.insert(
-            0, dhcp.option(tag=3, value=addrconv.ipv4.text_to_bin(self.dhcp_association[str(dpid),str(port)][1])))
-        dhcp_packet.options.option_list.insert(
-            0, dhcp.option(tag=53, value='\x02'))
-        dhcp_packet.options.option_list.insert(
-            0, dhcp.option(tag=54, value=addrconv.ipv4.text_to_bin(self.dhcp_association[str(dpid),str(port)][1])))
-
-        dhcp_packet_res = dhcp.dhcp(op=2,
-                                    chaddr=hw_addr,
-                                    options=dhcp_packet.options,
-                                    xid=dhcp_packet.xid,
-                                    yiaddr=client_ip_address,
-                                    siaddr=self.dhcp_association[str(dpid),str(port)][1],
-                                    boot_file=dhcp_packet.boot_file)
-        self.send_dhcp_packet(dhcp_packet_res,ipv4discovery.proto,hw_addr,'255.255.255.255',datapath,port)
+        if found_address:
+            dhcp_packet.options.option_list.remove(
+                next(opt for opt in dhcp_packet.options.option_list if opt.tag == 55))
+            #dhcp_packet.options.option_list.remove(
+            #    next(opt for opt in dhcp_packet.options.option_list if opt.tag == 50))
+            dhcp_packet.options.option_list.remove(
+                next(opt for opt in dhcp_packet.options.option_list if opt.tag == 53))
+            dhcp_packet.options.option_list.remove(
+                next(opt for opt in dhcp_packet.options.option_list if opt.tag == 12))
+            dhcp_packet.options.option_list.insert(
+                0, dhcp.option(tag=1, value=addrconv.ipv4.text_to_bin(self.dhcp_association[str(dpid),str(port)][3])))
+            dhcp_packet.options.option_list.insert(
+                0, dhcp.option(tag=3, value=addrconv.ipv4.text_to_bin(self.dhcp_association[str(dpid),str(port)][1])))
+            dhcp_packet.options.option_list.insert(
+                0, dhcp.option(tag=53, value='\x02'))
+            dhcp_packet.options.option_list.insert(
+                0, dhcp.option(tag=54, value=addrconv.ipv4.text_to_bin(self.dhcp_association[str(dpid),str(port)][1])))
+            dhcp_packet_res = dhcp.dhcp(op=2,
+                                        chaddr=hw_addr,
+                                        options=dhcp_packet.options,
+                                        xid=dhcp_packet.xid,
+                                        yiaddr=client_ip_address,
+                                        siaddr=self.dhcp_association[str(dpid),str(port)][1],
+                                        boot_file=dhcp_packet.boot_file)
+            self.send_dhcp_packet(dhcp_packet_res,ipv4discovery.proto,hw_addr,'255.255.255.255',datapath,port)
 
     def send_dhcp_packet(self,dhcp_packet,protocol,hw_addr,ip_addr,datapath,port):
 

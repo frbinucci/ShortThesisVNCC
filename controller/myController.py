@@ -114,12 +114,6 @@ class MySwitchAndRouter(app_manager.RyuApp):
         datapath=ev.msg.datapath
         self.send_set_config(datapath)
 
-        '''ofproto=datapath.ofproto
-        parser=datapath.ofproto_parser
-        match = parser.OFPMatch()
-        actions=[parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
-                                        0xffffffff)]
-        self.add_flow(datapath,0,0,match,actions,0)'''
 
     def send_set_config(self, datapath):
         ofp = datapath.ofproto
