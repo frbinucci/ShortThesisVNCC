@@ -6,9 +6,9 @@ This repository contains the script used in order to implement a simple example 
 ### Instruction for composing the configuration file
 Put the file parma.conf in ryu/app/param.conf. 
 This file defines:
-1)Information about NAT
-2)Information about gateways
-3)Information about a very simple DHCP server
+* 1)Information about NAT
+* 2)Information about gateways
+* 3)Information about a very simple DHCP server
 
 Here's an example of param.conf file:
 
